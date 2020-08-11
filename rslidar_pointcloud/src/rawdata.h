@@ -113,6 +113,16 @@ typedef struct raw_packet
   uint8_t status[PACKET_STATUS_SIZE];
 } raw_packet_t;
 
+
+struct PointXYZIR
+{
+  PCL_ADD_POINT4D;                    // quad-word XYZ
+  float    intensity;
+  uint16_t ring;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW     // ensure proper alignment
+} EIGEN_ALIGN16;
+
+
 /** \brief RSLIDAR data conversion class */
 class RawData
 {
@@ -129,10 +139,10 @@ public:
   void loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh);
 
   /*unpack the RS16 UDP packet and opuput PCL PointXYZI type*/
-  void unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<pcl::PointXYZI>::Ptr pointcloud);
+  void unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIR>::Ptr pointcloud);
 
   /*unpack the RS32 UDP packet and opuput PCL PointXYZI type*/
-  void unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<pcl::PointXYZI>::Ptr pointcloud);
+  void unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIR>::Ptr pointcloud);
 
   /*compute temperature*/
   float computeTemperature(unsigned char bit1, unsigned char bit2);
@@ -182,6 +192,15 @@ private:
   std::vector<double> sin_lookup_table_;
 };
 
+} // end namespace
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(rslidar_rawdata::PointXYZIR,
+                                  (float, x, x)
+                                  (float, y, y)
+                                  (float, z, z)
+                                  (float, intensity, intensity)
+                                  (uint16_t, ring, ring))
+
 static int VERT_ANGLE[32];
 static int HORI_ANGLE[32];
 static float aIntensityCal[7][32];
@@ -194,6 +213,5 @@ static float temper = 31.0;
 static int tempPacketNum = 0;
 static int numOfLasers = 16;
 static int TEMPERATURE_RANGE = 40;
-}  // namespace rslidar_rawdata
 
 #endif  // __RAWDATA_H

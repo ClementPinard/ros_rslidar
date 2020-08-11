@@ -38,7 +38,7 @@ Convert::Convert(ros::NodeHandle node, ros::NodeHandle private_nh) : data_(new r
   private_nh.param("input_packets_topic", input_packets_topic, std::string("rslidar_packets"));
   rslidar_scan_ = node.subscribe(input_packets_topic, 10, &Convert::processScan, (Convert*)this,
                                  ros::TransportHints().tcpNoDelay(true));
-  out_points_.reset(new pcl::PointCloud<pcl::PointXYZI>);
+  out_points_.reset(new pcl::PointCloud<rslidar_rawdata::PointXYZIR>);
 }
 
 void Convert::callback(rslidar_pointcloud::CloudNodeConfig& config, uint32_t level)
@@ -58,14 +58,14 @@ void Convert::processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg)
     out_points_->height = 16;
     out_points_->width = 24 * (int)scanMsg->packets.size();
     out_points_->is_dense = false;
-    out_points_->resize(out_points_->height * out_points_->width);
+    out_points_->reserve(out_points_->height * out_points_->width);
   }
   else if (model == "RS32" || model == "RSBPEARL" || model == "RSBPEARL_MINI")
   {
     out_points_->height = 32;
     out_points_->width = 12 * (int)scanMsg->packets.size();
     out_points_->is_dense = false;
-    out_points_->resize(out_points_->height * out_points_->width);
+    out_points_->reserve(out_points_->height * out_points_->width);
   }
 
   // process each packet provided by the driver
