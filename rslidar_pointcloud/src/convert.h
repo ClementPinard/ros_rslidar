@@ -41,7 +41,7 @@ private:
   ros::Subscriber rslidar_scan_;
   ros::Publisher output_;
 
-  pcl::PointCloud<rslidar_rawdata::PointXYZIR>::Ptr out_points_;
+  pcl::PointCloud<rslidar_rawdata::PointXYZIRT>::Ptr out_points_;
   sensor_msgs::PointCloud2 out_msg_;
 };
 

@@ -38,7 +38,7 @@ Convert::Convert(ros::NodeHandle node, ros::NodeHandle private_nh) : data_(new r
   private_nh.param("input_packets_topic", input_packets_topic, std::string("rslidar_packets"));
   rslidar_scan_ = node.subscribe(input_packets_topic, 10, &Convert::processScan, (Convert*)this,
                                  ros::TransportHints().tcpNoDelay(true));
-  out_points_.reset(new pcl::PointCloud<rslidar_rawdata::PointXYZIR>);
+  out_points_.reset(new pcl::PointCloud<rslidar_rawdata::PointXYZIRT>);
 }
 
 void Convert::callback(rslidar_pointcloud::CloudNodeConfig& config, uint32_t level)
@@ -73,7 +73,7 @@ void Convert::processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg)
   data_->block_num = 0;
   for (size_t i = 0; i < scanMsg->packets.size(); ++i)
   {
-    data_->unpack(scanMsg->packets[i], out_points_);
+    data_->unpack(scanMsg->packets[i], out_points_, ((double) out_points_->header.stamp) * 1e-6);
   }
 
   pcl::toROSMsg(*out_points_, out_msg_);
