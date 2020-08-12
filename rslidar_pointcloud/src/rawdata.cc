@@ -25,6 +25,67 @@ RawData::RawData()
   this->is_init_top_fw_ = false;
 }
 
+void RawData::setTimingOffsets()
+{
+  timing_offsets.resize(BLOCKS_PER_PACKET);
+  int num_firings, num_scans, block_duration, firing_offset, dsr_offset;
+  if (numOfLasers == 16) //RS16
+  {
+    num_firings = RS16_FIRINGS_PER_BLOCK;
+    num_scans = RS16_SCANS_PER_FIRING;
+    block_duration = RS16_BLOCK_TDURATION;
+    firing_offset = RS16_FIRING_TOFFSET;
+    dsr_offset = RS16_DSR_TOFFSET;
+  }
+  else if (numOfLasers == 32 && !isBpearlLidar_) //RS32
+  {
+    num_firings = RS32_FIRINGS_PER_BLOCK;
+    num_scans = RS32_SCANS_PER_FIRING;
+    block_duration = RS32_BLOCK_TDURATION;
+    firing_offset = RS32_FIRING_TOFFSET;
+    dsr_offset = RS32_DSR_TOFFSET;
+  }
+  else if (numOfLasers == 32) //RSBPEARL
+  {
+    num_firings = RSBPEARL_FIRINGS_PER_BLOCK;
+    num_scans = RSBPEARL_SCANS_PER_FIRING;
+    block_duration = RSBPEARL_BLOCK_TDURATION;
+    firing_offset = RSBPEARL_FIRING_TOFFSET;
+    dsr_offset = RSBPEARL_DSR_TOFFSET; 
+  }
+  for (size_t i=0; i < timing_offsets.size(); ++i)
+  {
+    timing_offsets[i].resize(num_firings * num_scans);
+  }
+
+  for (size_t block = 0; block < timing_offsets.size(); ++block)
+  {
+    for (size_t firing = 0; firing < num_firings; ++firing)
+    {
+      for (size_t dsr = 0; dsr < num_scans; ++dsr)
+      {
+        size_t y = dsr + num_scans * firing;
+        if (numOfLasers == 16)
+        {
+          timing_offsets[block][y] = block_duration * block + \
+                                     firing_offset * firing + \
+                                     dsr_offset * dsr;
+        }
+        else
+        {
+          timing_offsets[block][y] = block_duration * block + \
+                                     firing_offset * firing + \
+                                     dsr_offset * ((dsr + 1) / 16 + 2 * (dsr % 16));
+          if (isBpearlLidar_ && dsr % 16 >= 8){
+            timing_offsets[block][y] += RSBPEARL_RELOAD_TOFFSET;
+          }
+        }
+      }
+    }
+  }
+
+}
+
 void RawData::loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh)
 {
   std::string anglePath, curvesPath, channelPath, curvesRatePath;
@@ -124,6 +185,8 @@ void RawData::loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh)
   {
     std::cout << "Bad model!" << std::endl;
   }
+
+  setTimingOffsets();
 
   intensityFactor = 51;
 
@@ -828,7 +891,9 @@ int RawData::estimateTemperature(float Temper)
  *  @param pkt raw packet to unpack
  *  @param pc shared pointer to point cloud (points are appended)
  */
-void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIRT>::Ptr pointcloud, double first_pkt_ts)
+void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
+                     pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
+                     double first_pkt_ts, bool dense_cloud)
 {
   // check pkt header
   if (pkt.data[0] != 0x55 || pkt.data[1] != 0xAA || pkt.data[2] != 0x05 || pkt.data[3] != 0x0A)
@@ -838,7 +903,7 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<Poi
 
   if (numOfLasers == 32)
   {
-    unpack_RS32(pkt, pointcloud, first_pkt_ts);
+    unpack_RS32(pkt, pointcloud, first_pkt_ts, dense_cloud);
     return;
   }
   float azimuth;  // 0.01 dgree
@@ -846,7 +911,6 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<Poi
   float azimuth_diff;
   float azimuth_corrected_f;
   int azimuth_corrected;
-  float delta_t;
   float pkt_timestamp;
 
   struct tm stm;
@@ -912,17 +976,10 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<Poi
     {
       for (int dsr = 0; dsr < RS16_SCANS_PER_FIRING; dsr++, k += RAW_SCAN_SIZE)  // 16   3
       {
-        if (0 == return_mode_)
-        {
-          delta_t = dsr * RS16_DSR_TOFFSET;
-          azimuth_corrected_f = azimuth + (azimuth_diff * delta_t) / RS16_FIRING_TOFFSET;
-        }
-        else
-        {
-          delta_t = (dsr * RS16_DSR_TOFFSET) + (firing * RS16_FIRING_TOFFSET);
-          azimuth_corrected_f = azimuth + (azimuth_diff * (delta_t) /
-                                           RS16_BLOCK_TDURATION);
-        }
+        size_t y = dsr + firing * RS16_SCANS_PER_FIRING;
+        float delta_t = timing_offsets[0][y];
+        azimuth_corrected_f = azimuth + (azimuth_diff * (delta_t) /
+                                         RS16_BLOCK_TDURATION);
         azimuth_corrected = ((int)round(azimuth_corrected_f)) % 36000;  // convert to integral value...
 
         union two_bytes tmp;
@@ -952,12 +1009,25 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<Poi
         int arg_vert = ((VERT_ANGLE[dsr]) % 36000 + 36000) % 36000;
 
         PointXYZIRT point;
+        point.time = pkt_timestamp + timing_offsets[block][y] * 1e-6;
+        point.ring = dsr;
 
         if (distance2 > max_distance_ || distance2 < min_distance_ ||
             (angle_flag_ && (arg_horiz < start_angle_ || arg_horiz > end_angle_)) ||
             (!angle_flag_ && (arg_horiz > end_angle_ && arg_horiz < start_angle_)))  // invalid distance
         {
-          continue;
+          if (dense_cloud)
+          {
+            continue;
+          }
+          else
+          {
+            point.x = NAN;
+            point.y = NAN;
+            point.z = NAN;
+            point.intensity = 0;
+            pointcloud->at(2 * this->block_num + firing, dsr) = point;
+          }
         }
         else
         {
@@ -969,23 +1039,29 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<Poi
                     Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
           point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
           point.intensity = intensity;
-          point.ring = dsr;
-          point.time = pkt_timestamp + (RS16_BLOCK_TDURATION * block + delta_t)*1e-6;
-          pointcloud->push_back(point);
+          if (dense_cloud)
+          {
+            pointcloud->push_back(point);
+          }
+          else
+          {
+            pointcloud->at(2 * this->block_num + firing, dsr) = point;
+          }
         }
       }
     }
   }
 }
 
-void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIRT>::Ptr pointcloud, double first_pkt_ts)
+void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
+                          pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
+                          double first_pkt_ts, bool dense_cloud)
 {
   float azimuth;  // 0.01 dgree
   float intensity;
   float azimuth_diff;
   float azimuth_corrected_f;
   int azimuth_corrected;
-  float delta_t;
   float pkt_timestamp;
 
   struct tm stm;
@@ -1063,7 +1139,7 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
     {
       for (int dsr = 0, k = 0; dsr < RS32_SCANS_PER_FIRING * RS32_FIRINGS_PER_BLOCK; dsr++, k += RAW_SCAN_SIZE)  // 16 3
       {
-        delta_t = (dsr % 16) * RS32_DSR_TOFFSET;
+        float delta_t = timing_offsets[0][dsr];
         azimuth_corrected_f = azimuth + (azimuth_diff * delta_t / RS32_BLOCK_TDURATION);
         azimuth_corrected = correctAzimuth(azimuth_corrected_f, dsr);
 
@@ -1129,7 +1205,7 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
           index = k;
         }
 
-        delta_t = (dsr % 16) * RS32_DSR_TOFFSET;
+        float delta_t = timing_offsets[0][dsr];
         azimuth_corrected_f = azimuth + (azimuth_diff * delta_t / RS32_BLOCK_TDURATION);
         azimuth_corrected = correctAzimuth(azimuth_corrected_f, dsr);
 
@@ -1151,12 +1227,32 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
         int arg_vert = ((VERT_ANGLE[dsr]) % 36000 + 36000) % 36000;
 
         PointXYZIRT point;
+        if (0 == return_mode_)
+        {
+          point.time = pkt_timestamp + timing_offsets[block/2][dsr] * 1e-6;
+        }
+        else
+        {
+          point.time = pkt_timestamp + timing_offsets[block][dsr] * 1e-6;
+        }
+        point.ring = dsr;
 
         if (distance2 > max_distance_ || distance2 < min_distance_ ||
             (angle_flag_ && (arg_horiz < start_angle_ || arg_horiz > end_angle_)) ||
             (!angle_flag_ && (arg_horiz > end_angle_ && arg_horiz < start_angle_)))  // invalid distance
         {
-          continue;
+          if (dense_cloud)
+          {
+            continue;
+          }
+          else
+          {
+            point.x = NAN;
+            point.y = NAN;
+            point.z = NAN;
+            point.intensity = 0;
+            pointcloud->at(this->block_num, dsr) = point;
+          }
         }
         else
         {
@@ -1167,9 +1263,14 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
                     Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
           point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
           point.intensity = intensity;
-          point.ring = dsr;
-          point.time = pkt_timestamp + (RS32_BLOCK_TDURATION * block + delta_t)*1e-6;
-          pointcloud->push_back(point);
+          if (dense_cloud)
+          {
+            pointcloud->push_back(point);
+          }
+          else
+          {
+            pointcloud->at(this->block_num, dsr) = point;
+          }
         }
       }
     }

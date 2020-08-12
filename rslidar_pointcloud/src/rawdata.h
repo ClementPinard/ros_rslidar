@@ -55,9 +55,16 @@ static const float RS16_FIRING_TOFFSET = 50.0f;    // [µs]
 /** Special Defines for RS32 support **/
 static const int RS32_FIRINGS_PER_BLOCK = 1;
 static const int RS32_SCANS_PER_FIRING = 32;
-static const float RS32_BLOCK_TDURATION = 50.0f;  // [µs]
-static const float RS32_DSR_TOFFSET = 3.0f;       // [µs]
-static const float RL32_FIRING_TOFFSET = 50.0f;   // [µs]
+static const float RS32_BLOCK_TDURATION = 55.52f;  // [µs]
+static const float RS32_DSR_TOFFSET = 1.44f;       // [µs]
+static const float RS32_FIRING_TOFFSET = 50.0f;   // [µs]
+
+static const int RSBPEARL_FIRINGS_PER_BLOCK = 1;
+static const int RSBPEARL_SCANS_PER_FIRING = 32;
+static const float RSBPEARL_BLOCK_TDURATION = 55.52f;  // [µs]
+static const float RSBPEARL_DSR_TOFFSET = 1.28f;       // [µs]
+static const float RSBPEARL_FIRING_TOFFSET = 50.0f;   // [µs]
+static const float RSBPEARL_RELOAD_TOFFSET = 5.2f;   // [µs]
 
 static const int TEMPERATURE_MIN = 31;
 
@@ -139,11 +146,18 @@ public:
   /*load the cablibrated files: angle, distance, intensity*/
   void loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh);
 
+  /*set timing offsets lookup table. */
+  void setTimingOffsets();
+
   /*unpack the RS16 UDP packet and opuput PCL PointXYZI type*/
-  void unpack(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIRT>::Ptr pointcloud, double first_pkt_ts);
+  void unpack(const rslidar_msgs::rslidarPacket& pkt,
+              pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
+              double first_pkt_ts, bool dense_cloud);
 
   /*unpack the RS32 UDP packet and opuput PCL PointXYZI type*/
-  void unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointCloud<PointXYZIRT>::Ptr pointcloud, double first_pkt_ts);
+  void unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
+                   pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
+                   double first_pkt_ts, bool dense_cloud);
 
   /*compute temperature*/
   float computeTemperature(unsigned char bit1, unsigned char bit2);
@@ -191,6 +205,7 @@ private:
   /* cos/sin lookup table */
   std::vector<double> cos_lookup_table_;
   std::vector<double> sin_lookup_table_;
+  std::vector< std::vector<float> > timing_offsets;
 };
 
 } // end namespace

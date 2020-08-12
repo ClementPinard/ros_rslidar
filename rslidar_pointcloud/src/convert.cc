@@ -16,12 +16,14 @@
 namespace rslidar_pointcloud
 {
 std::string model;
+bool dense_cloud;
 
 /** @brief Constructor. */
 Convert::Convert(ros::NodeHandle node, ros::NodeHandle private_nh) : data_(new rslidar_rawdata::RawData())
 {
   data_->loadConfigFile(node, private_nh);  // load lidar parameters
   private_nh.param("model", model, std::string("RS16"));
+  private_nh.param("dense_cloud", dense_cloud, true);
 
   // advertise output point cloud (before subscribing to input data)
   std::string output_points_topic;
@@ -53,19 +55,26 @@ void Convert::processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg)
   out_points_->header.stamp = pcl_conversions::toPCL(scanMsg->header).stamp;
   out_points_->header.frame_id = scanMsg->header.frame_id;
   out_points_->clear();
-  if (model == "RS16")
+  if (dense_cloud)
   {
-    out_points_->height = 16;
-    out_points_->width = 24 * (int)scanMsg->packets.size();
-    out_points_->is_dense = false;
-    out_points_->reserve(out_points_->height * out_points_->width);
+    out_points_->reserve(16 * 24 * (int)scanMsg->packets.size());
   }
-  else if (model == "RS32" || model == "RSBPEARL" || model == "RSBPEARL_MINI")
+  else
   {
-    out_points_->height = 32;
-    out_points_->width = 12 * (int)scanMsg->packets.size();
-    out_points_->is_dense = false;
-    out_points_->reserve(out_points_->height * out_points_->width);
+    if (model == "RS16")
+    {
+      out_points_->height = 16;
+      out_points_->width = 24 * (int)scanMsg->packets.size();
+      out_points_->is_dense = false;
+      out_points_->resize(out_points_->height * out_points_->width);
+    }
+    else if (model == "RS32" || model == "RSBPEARL" || model == "RSBPEARL_MINI")
+    {
+      out_points_->height = 32;
+      out_points_->width = 12 * (int)scanMsg->packets.size();
+      out_points_->is_dense = false;
+      out_points_->resize(out_points_->height * out_points_->width);
+    }
   }
 
   // process each packet provided by the driver
@@ -73,7 +82,7 @@ void Convert::processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg)
   data_->block_num = 0;
   for (size_t i = 0; i < scanMsg->packets.size(); ++i)
   {
-    data_->unpack(scanMsg->packets[i], out_points_, ((double) out_points_->header.stamp) * 1e-6);
+    data_->unpack(scanMsg->packets[i], out_points_, ((double) out_points_->header.stamp) * 1e-6, dense_cloud);
   }
 
   pcl::toROSMsg(*out_points_, out_msg_);
