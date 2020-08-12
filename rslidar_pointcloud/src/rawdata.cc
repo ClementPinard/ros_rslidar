@@ -893,7 +893,7 @@ int RawData::estimateTemperature(float Temper)
  */
 void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
                      pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-                     double first_pkt_ts, bool dense_cloud)
+                     bool dense_cloud)
 {
   // check pkt header
   if (pkt.data[0] != 0x55 || pkt.data[1] != 0xAA || pkt.data[2] != 0x05 || pkt.data[3] != 0x0A)
@@ -903,7 +903,7 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
 
   if (numOfLasers == 32)
   {
-    unpack_RS32(pkt, pointcloud, first_pkt_ts, dense_cloud);
+    unpack_RS32(pkt, pointcloud, dense_cloud);
     return;
   }
   float azimuth;  // 0.01 dgree
@@ -923,7 +923,15 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
   stm.tm_sec  = (int)pkt.data[25];
   double stamp_double = mktime(&stm) + 0.001 * (256 * pkt.data[26] + pkt.data[27]) +
                         0.000001 * (256 * pkt.data[28] + pkt.data[29]);
-  pkt_timestamp = ros::Time(stamp_double).toSec() - first_pkt_ts;
+  if (this->first_pkt_ts == 0)
+  {
+    this->first_pkt_ts = stamp_double;
+    pkt_timestamp = 0;
+  }
+  else
+  {
+    pkt_timestamp = stamp_double - this->first_pkt_ts;
+  }
 
   const raw_packet_t* raw = (const raw_packet_t*)&pkt.data[42];
 
@@ -1055,7 +1063,7 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
 
 void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
                           pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-                          double first_pkt_ts, bool dense_cloud)
+                          bool dense_cloud)
 {
   float azimuth;  // 0.01 dgree
   float intensity;
@@ -1074,7 +1082,15 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
   stm.tm_sec  = (int)pkt.data[25];
   double stamp_double = mktime(&stm) + 0.001 * (256 * pkt.data[26] + pkt.data[27]) +
                         0.000001 * (256 * pkt.data[28] + pkt.data[29]);
-  pkt_timestamp = ros::Time(stamp_double).toSec() - first_pkt_ts;
+  if (this->first_pkt_ts == 0)
+  {
+    this->first_pkt_ts = stamp_double;
+    pkt_timestamp = 0;
+  }
+  else
+  {
+    pkt_timestamp = stamp_double - this->first_pkt_ts;
+  }
 
   const raw_packet_t* raw = (const raw_packet_t*)&pkt.data[42];
 

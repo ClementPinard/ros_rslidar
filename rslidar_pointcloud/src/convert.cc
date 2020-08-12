@@ -80,9 +80,10 @@ void Convert::processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg)
   // process each packet provided by the driver
 
   data_->block_num = 0;
+  data_->first_pkt_ts = 0;
   for (size_t i = 0; i < scanMsg->packets.size(); ++i)
   {
-    data_->unpack(scanMsg->packets[i], out_points_, ((double) out_points_->header.stamp) * 1e-6, dense_cloud);
+    data_->unpack(scanMsg->packets[i], out_points_, dense_cloud);
   }
 
   pcl::toROSMsg(*out_points_, out_msg_);
