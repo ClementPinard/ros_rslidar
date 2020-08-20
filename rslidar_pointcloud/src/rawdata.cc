@@ -893,7 +893,7 @@ int RawData::estimateTemperature(float Temper)
  */
 void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
                      pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-                     bool dense_cloud)
+                     bool dense_cloud, const ros::Time& scan_time)
 {
   // check pkt header
   if (pkt.data[0] != 0x55 || pkt.data[1] != 0xAA || pkt.data[2] != 0x05 || pkt.data[3] != 0x0A)
@@ -903,7 +903,7 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
 
   if (numOfLasers == 32)
   {
-    unpack_RS32(pkt, pointcloud, dense_cloud);
+    unpack_RS32(pkt, pointcloud, dense_cloud, scan_time);
     return;
   }
   float azimuth;  // 0.01 dgree
@@ -911,27 +911,7 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
   float azimuth_diff;
   float azimuth_corrected_f;
   int azimuth_corrected;
-  float pkt_timestamp;
-
-  struct tm stm;
-  memset(&stm, 0, sizeof(stm));
-  stm.tm_year = (int)pkt.data[20] + 100;
-  stm.tm_mon  = (int)pkt.data[21] - 1;
-  stm.tm_mday = (int)pkt.data[22];
-  stm.tm_hour = (int)pkt.data[23];
-  stm.tm_min  = (int)pkt.data[24];
-  stm.tm_sec  = (int)pkt.data[25];
-  double stamp_double = mktime(&stm) + 0.001 * (256 * pkt.data[26] + pkt.data[27]) +
-                        0.000001 * (256 * pkt.data[28] + pkt.data[29]);
-  if (this->first_pkt_ts == 0)
-  {
-    this->first_pkt_ts = stamp_double;
-    pkt_timestamp = 0;
-  }
-  else
-  {
-    pkt_timestamp = stamp_double - this->first_pkt_ts;
-  }
+  float pkt_timestamp = (pkt.stamp - scan_time).toSec();
 
   const raw_packet_t* raw = (const raw_packet_t*)&pkt.data[42];
 
@@ -1063,34 +1043,14 @@ void RawData::unpack(const rslidar_msgs::rslidarPacket& pkt,
 
 void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
                           pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-                          bool dense_cloud)
+                          bool dense_cloud, const ros::Time& scan_time)
 {
   float azimuth;  // 0.01 dgree
   float intensity;
   float azimuth_diff;
   float azimuth_corrected_f;
   int azimuth_corrected;
-  float pkt_timestamp;
-
-  struct tm stm;
-  memset(&stm, 0, sizeof(stm));
-  stm.tm_year = (int)pkt.data[20] + 100;
-  stm.tm_mon  = (int)pkt.data[21] - 1;
-  stm.tm_mday = (int)pkt.data[22];
-  stm.tm_hour = (int)pkt.data[23];
-  stm.tm_min  = (int)pkt.data[24];
-  stm.tm_sec  = (int)pkt.data[25];
-  double stamp_double = mktime(&stm) + 0.001 * (256 * pkt.data[26] + pkt.data[27]) +
-                        0.000001 * (256 * pkt.data[28] + pkt.data[29]);
-  if (this->first_pkt_ts == 0)
-  {
-    this->first_pkt_ts = stamp_double;
-    pkt_timestamp = 0;
-  }
-  else
-  {
-    pkt_timestamp = stamp_double - this->first_pkt_ts;
-  }
+  float pkt_timestamp = (pkt.stamp - scan_time).toSec();
 
   const raw_packet_t* raw = (const raw_packet_t*)&pkt.data[42];
 

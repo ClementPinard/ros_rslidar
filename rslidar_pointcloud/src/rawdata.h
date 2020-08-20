@@ -152,12 +152,12 @@ public:
   /*unpack the RS16 UDP packet and opuput PCL PointXYZI type*/
   void unpack(const rslidar_msgs::rslidarPacket& pkt,
               pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-              bool dense_cloud);
+              bool dense_cloud, const ros::Time& scan_time);
 
   /*unpack the RS32 UDP packet and opuput PCL PointXYZI type*/
   void unpack_RS32(const rslidar_msgs::rslidarPacket& pkt,
                    pcl::PointCloud<PointXYZIRT>::Ptr pointcloud,
-                   bool dense_cloud);
+                   bool dense_cloud, const ros::Time& scan_time);
 
   /*compute temperature*/
   float computeTemperature(unsigned char bit1, unsigned char bit2);
@@ -187,7 +187,6 @@ public:
   int block_num = 0;
   int intensity_mode_;
   int intensityFactor;
-  double first_pkt_ts = 0;
 
 private:
   float Rx_;  // the optical center position in the lidar coordination in x direction
